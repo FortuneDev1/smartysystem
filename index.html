@@ -72,7 +72,8 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ink);outline-of
     <label>Automatic mode <input type="checkbox" id="auto"></label>
     <label>Pump on (manual) <input type="checkbox" id="mPump"></label>
     <label>Valve open (manual) <input type="checkbox" id="mValve"></label>
-    </div>
+    <p class="hint">In automatic mode the ESP32 fills the tank by itself and stops when the water is cloudy, too warm or cold, or the pump runs dry.</p>
+  </div>
   <div class="card">
     <h2>Thresholds</h2>
     <label>Lowest clarity (V) <input type="number" step="0.1" id="turbMinV"></label>
@@ -92,12 +93,14 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--ink);outline-of
   <div class="card"><h2>Flow (L/min)</h2><div class="ch"><canvas id="cF"></canvas></div></div>
   <div class="card"><h2>Tank distance (cm)</h2><div class="ch"><canvas id="cD"></canvas></div></div>
 </section>
-<p class="hint"></main>
+<p class="hint">Anyone with this link can change the controls. Add a login before sharing it widely.</p>
+</main>
 
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
+// 1) Paste your own values from Firebase: Project settings > General > Your apps
 const firebaseConfig = {
   apiKey: "AIzaSyBbOhggYjUHFj2Kv9CIKP7ydbjQYe96rtM",
   authDomain: "fortune-smarty-system.firebaseapp.com",
@@ -108,6 +111,9 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 const $ = id => document.getElementById(id);
+db.ref('.info/connected').on('value', s => {
+  if (!s.val()) { $('alert').style.display = 'block'; $('alert').textContent = 'Dashboard is not connected to Firebase.'; }
+});
 const DEFAULTS = {auto:true,mPump:false,mValve:false,turbMinV:2.5,tempMin:5,tempMax:35,fullCm:5,startCm:15,flowMin:0.3,tankCm:30};
 const FIELDS = ['turbMinV','tempMin','tempMax','fullCm','startCm','flowMin','tankCm'];
 const MSG = {
@@ -185,7 +191,10 @@ db.ref('cfg').on('value', s => {
 $('save').onclick = () => {
   const o = {};
   FIELDS.forEach(f => { const x = parseFloat($(f).value); if (!isNaN(x)) o[f] = x; });
-  db.ref('cfg').update(o).then(() => { $('saved').textContent = 'Saved'; setTimeout(() => $('saved').textContent = '', 2500); });
+  if (o.tankCm !== undefined && o.tankCm <= 0) { $('saved').textContent = 'Tank height must be above 0'; return; }
+  if (o.fullCm !== undefined && o.startCm !== undefined && o.startCm <= o.fullCm) { $('saved').textContent = 'Refill distance must exceed full distance'; return; }
+  db.ref('cfg').update(o).then(() => { $('saved').textContent = 'Saved'; setTimeout(() => $('saved').textContent = '', 2500); })
+    .catch(err => { $('saved').textContent = 'Save failed: ' + err.message; });
 };
 
 const mk = (id, color) => new Chart($(id), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:color, borderWidth:2, pointRadius:0, tension:.3}]},
