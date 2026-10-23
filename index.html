@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Water path monitor</title>
+<style>
+:root{--ink:#0e2a33;--bg:#f2f7f6;--card:#fff;--line:#d3e1df;--sea:#1f7a7a;--ok:#2f8f6b;--warn:#c8553d;--mut:#5d7a80}
+@media(prefers-color-scheme:dark){:root{--ink:#e4f0ee;--bg:#0b1c21;--card:#12292f;--line:#26444c;--sea:#4fc1b0;--ok:#4fc19a;--warn:#ee8a72;--mut:#8fb0b3}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 "Avenir Next","Segoe UI",system-ui,sans-serif}
+main{max-width:980px;margin:0 auto;padding:16px}
+h1{font-size:1.5rem;margin:0}h2{font-size:1.05rem;margin:0 0 10px}
+header{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between;margin-bottom:14px}
+.nodes{display:flex;gap:14px;font-size:.85rem;color:var(--mut)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--warn);margin-right:5px}.dot.on{background:var(--ok)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+#alert{display:none;border-left:5px solid var(--warn);background:var(--card);padding:10px 14px;margin-bottom:14px;border-radius:6px;font-weight:600}
+.pipe{display:grid;grid-template-columns:repeat(5,1fr);gap:0}
+.stage{position:relative;padding:12px 10px;border-top:4px solid var(--line);text-align:center}
+.stage.on{border-top-color:var(--sea)}
+.stage+.stage::before{content:"";position:absolute;left:-1px;top:-4px;width:2px;height:4px}
+.stage b{display:block;font-size:.85rem;color:var(--mut);font-weight:600}
+.stage span{display:block;font-size:1.35rem;font-weight:700;font-variant-numeric:tabular-nums}
+.stage small{color:var(--mut);font-size:.8rem}
+.bar{height:8px;background:var(--line);border-radius:4px;margin:6px 10px 0;overflow:hidden}.bar i{display:block;height:100%;width:0;background:var(--sea);transition:width .4s}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+label{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:7px 0;font-size:.95rem}
+input[type=number]{width:90px;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);font:inherit}
+input[type=checkbox]{width:20px;height:20px;accent-color:var(--sea)}
+button{background:var(--sea);color:#fff;border:0;border-radius:8px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer;margin-top:8px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.ch{height:170px}
+.hint{color:var(--mut);font-size:.82rem;margin:6px 0 0}
+@media(max-width:700px){.pipe{grid-template-columns:1fr}.stage{border-top:0;border-left:4px solid var(--line);text-align:left;padding:8px 12px}.stage.on{border-left-color:var(--sea)}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Water path monitor</h1>
+  <div class="nodes"><span><i class="dot" id="d1"></i>ESP32</span><span><i class="dot" id="d2"></i>Sensors</span><span><i class="dot" id="d3"></i>Valve</span></div>
+</header>
+<div id="alert"></div>
+
+<section class="card">
+  <h2>Water path</h2>
+  <div class="pipe">
+    <div class="stage" id="sChamber"><b>Incoming chamber</b><span id="vTemp">–</span><small id="vTurb">clarity –</small></div>
+    <div class="stage" id="sPump"><b>Pump</b><span id="vPump">–</span></div>
+    <div class="stage" id="sFlow"><b>Flow</b><span id="vFlow">–</span><small>L/min</small></div>
+    <div class="stage" id="sValve"><b>Solenoid valve</b><span id="vValve">–</span><small id="vValveNote"></small></div>
+    <div class="stage" id="sTank"><b>Storage tank</b><span id="vLevel">–</span><small id="vDist">–</small><div class="bar"><i id="bar"></i></div></div>
+  </div>
+</section>
+
+<section class="grid">
+  <div class="card">
+    <h2>Control</h2>
+    <label>Automatic mode <input type="checkbox" id="auto"></label>
+    <label>Pump on (manual) <input type="checkbox" id="mPump"></label>
+    <label>Valve open (manual) <input type="checkbox" id="mValve"></label>
+    <p class="hint">In automatic mode the ESP32 fills the tank by itself and stops when the water is cloudy, too warm or cold, or the pump runs dry.</p>
+  </div>
+  <div class="card">
+    <h2>Thresholds</h2>
+    <label>Lowest clarity (V) <input type="number" step="0.1" id="turbMinV"></label>
+    <label>Lowest temperature (°C) <input type="number" step="0.5" id="tempMin"></label>
+    <label>Highest temperature (°C) <input type="number" step="0.5" id="tempMax"></label>
+    <label>Tank full at distance (cm) <input type="number" step="0.5" id="fullCm"></label>
+    <label>Refill below distance (cm) <input type="number" step="0.5" id="startCm"></label>
+    <label>Lowest flow (L/min) <input type="number" step="0.1" id="flowMin"></label>
+    <label>Empty tank distance (cm) <input type="number" step="1" id="tankCm"></label>
+    <button id="save">Save thresholds</button> <span id="saved" class="hint"></span>
+  </div>
+</section>
+
+<section class="grid">
+  <div class="card"><h2>Temperature (°C)</h2><div class="ch"><canvas id="cT"></canvas></div></div>
+  <div class="card"><h2>Clarity (V)</h2><div class="ch"><canvas id="cB"></canvas></div></div>
+  <div class="card"><h2>Flow (L/min)</h2><div class="ch"><canvas id="cF"></canvas></div></div>
+  <div class="card"><h2>Tank distance (cm)</h2><div class="ch"><canvas id="cD"></canvas></div></div>
+</section>
+<p class="hint">Anyone with this link can change the controls. Add a login before sharing it widely.</p>
+</main>
+
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBbOhggYjUHFj2Kv9CIKP7ydbjQYe96rtM",
+  authDomain: "fortune-smarty-system.firebaseapp.com",
+  databaseURL: "https://fortune-smarty-system-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "fortune-smarty-system",
+  appId: "1:190999295089:web:0af546dc723d8222b9d7d0"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const $ = id => document.getElementById(id);
+const DEFAULTS = {auto:true,mPump:false,mValve:false,turbMinV:2.5,tempMin:5,tempMax:35,fullCm:5,startCm:15,flowMin:0.3,tankCm:30};
+const FIELDS = ['turbMinV','tempMin','tempMax','fullCm','startCm','flowMin','tankCm'];
+const MSG = {
+  SENSOR_STALE:"Sensor node is offline or sending bad readings. Pump and valve are off.",
+  LOW_CLARITY:"Water is too cloudy. Filling is paused.",
+  TEMP_OUT:"Water temperature is outside the allowed range. Filling is paused.",
+  DRY_RUN:"Pump ran without flow. It is stopped for 60 seconds."
+};
+let off = 0, cfg = {...DEFAULTS}, last = {};
+db.ref('.info/serverTimeOffset').on('value', s => off = s.val() || 0);
+const age = ts => ts ? (Date.now() + off - ts) / 1000 : Infinity;
+const num = (v, d) => (typeof v === 'number' && v > -100) ? v.toFixed(d) : '–';
+
+function render() {
+  const e = last.esp32 || {}, n = last.sensor || {}, k = last.valve || {};
+  $('d1').className = 'dot' + (age(e.ts) < 30 ? ' on' : '');
+  $('d2').className = 'dot' + (age(n.ts) < 30 ? ' on' : '');
+  $('d3').className = 'dot' + (age(k.ts) < 40 ? ' on' : '');
+  $('vTemp').textContent = num(n.temp, 1) + (n.temp > -100 ? ' °C' : '');
+  $('vTurb').textContent = 'clarity ' + num(e.turbV, 2) + ' V';
+  $('vPump').textContent = e.pump ? 'ON' : 'OFF';
+  $('vFlow').textContent = num(e.flow, 1);
+  const open = !!k.open;
+  $('vValve').textContent = open ? 'OPEN' : 'CLOSED';
+  $('vValveNote').textContent = (e.valve !== undefined && !!e.valve !== open) ? 'moving to ' + (e.valve ? 'open' : 'closed') : '';
+  const d = n.dist, tank = cfg.tankCm || 30;
+  const lvl = d > 0 ? Math.max(0, Math.min(100, 100 * (tank - d) / tank)) : null;
+  $('vLevel').textContent = lvl === null ? '–' : Math.round(lvl) + ' %';
+  $('vDist').textContent = d > 0 ? d.toFixed(1) + ' cm to water' : 'no echo';
+  $('bar').style.width = (lvl || 0) + '%';
+  $('sChamber').classList.toggle('on', age(n.ts) < 30);
+  $('sPump').classList.toggle('on', !!e.pump);
+  $('sFlow').classList.toggle('on', e.flow > 0.1);
+  $('sValve').classList.toggle('on', open);
+  $('sTank').classList.toggle('on', lvl > 0);
+  const a = e.alert, box = $('alert');
+  box.style.display = (a && a !== 'OK') ? 'block' : 'none';
+  box.textContent = MSG[a] || a || '';
+}
+db.ref('latest').on('value', s => { last = s.val() || {}; render(); });
+
+db.ref('cfg').on('value', s => {
+  const v = s.val();
+  if (!v) { db.ref('cfg').set(DEFAULTS); return; }
+  cfg = {...DEFAULTS, ...v};
+  $('auto').checked = cfg.auto; $('mPump').checked = cfg.mPump; $('mValve').checked = cfg.mValve;
+  $('mPump').disabled = $('mValve').disabled = cfg.auto;
+  FIELDS.forEach(f => { if (document.activeElement !== $(f)) $(f).value = cfg[f]; });
+  render();
+});
+['auto','mPump','mValve'].forEach(id => $(id).onchange = e => db.ref('cfg/' + id).set(e.target.checked));
+$('save').onclick = () => {
+  const o = {};
+  FIELDS.forEach(f => { const x = parseFloat($(f).value); if (!isNaN(x)) o[f] = x; });
+  db.ref('cfg').update(o).then(() => { $('saved').textContent = 'Saved'; setTimeout(() => $('saved').textContent = '', 2500); });
+};
+
+const mk = (id, color) => new Chart($(id), {type:'line', data:{labels:[], datasets:[{data:[], borderColor:color, borderWidth:2, pointRadius:0, tension:.3}]},
+  options:{animation:false, responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{ticks:{maxTicksLimit:5}}}}});
+const C = {T:mk('cT','#c8553d'), B:mk('cB','#1f7a7a'), F:mk('cF','#3b78b8'), D:mk('cD','#7a6a3a')};
+const hhmm = t => new Date(t).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+function add(c, t, v) {
+  if (typeof v !== 'number' || v <= -100) return;
+  const d = c.data; d.labels.push(hhmm(t)); d.datasets[0].data.push(v);
+  if (d.labels.length > 200) { d.labels.shift(); d.datasets[0].data.shift(); }
+}
+let q = null;
+const redraw = () => q || (q = requestAnimationFrame(() => { q = null; Object.values(C).forEach(c => c.update('none')); }));
+db.ref('history/sensor').limitToLast(200).on('child_added', s => { const v = s.val(); add(C.T, v.t, v.temp); add(C.D, v.t, v.dist > 0 ? v.dist : null); redraw(); });
+db.ref('history/esp32').limitToLast(200).on('child_added', s => { const v = s.val(); add(C.B, v.t, v.turbV); add(C.F, v.t, v.flow); redraw(); });
+setInterval(render, 5000);
+</script>
+</body>
+</html>
